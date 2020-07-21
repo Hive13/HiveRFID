@@ -61,3 +61,17 @@ This should fetch all dependencies and produce a binary, `access.bin`.
 Code Overview
 -------------
 
+- `access/main/main.go` is the commandline entry point.
+- `access/access.go` is the top-level service that ties together
+  everything below and is meant as a long-running process listening
+  for requests.  The commandline produces a configuration and calls
+  this.
+- `intweb/intweb.go` interfaces with intweb (which runs
+  https://github.com/Hive13/HiveWeb) for access-specific
+  functionality.
+- `wiegand/wiegand.go` is a wrapper which turns badge access to a Go
+  channel that reports all 26-bit Wiegand codes scanned.
+- `wiegand/wiegand_c.go` is the low-level code for accessing a
+  Wiegand-compatible badge reader.  It relies on
+  [cgo](https://golang.org/cmd/cgo/) and
+  [WiringPi](http://wiringpi.com/).
