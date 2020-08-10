@@ -11,7 +11,7 @@ This contains code for Hive13's RFID & door access server, which:
 - triggers opening the door lock
 
 For more information, see
-https://wiki.hive13.org/view/RFID_Access#2020_Temporary_Rework_for_Front_Door
+https://wiki.hive13.org/view/RFID_Access#2929_Spring_Grove_-_Rework_for_Front_Door
 
 This is written as a [Go](https://golang.org/) module. Currently it
 requires a Raspberry Pi to run because it relies on

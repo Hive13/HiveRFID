@@ -182,7 +182,9 @@ type AccessReqData struct {
 // the server-side implementation is even hairier, so I really don't
 // care.
 type Response struct {
-	Data json.RawMessage `json:"data"`
+	Data     json.RawMessage `json:"data"`
+	Response *bool           `json:"response"`
+	Version  string          `json:"version"`
 }
 
 // RespData contains the data from a few intweb response types.
@@ -223,7 +225,17 @@ func (err *Error) Error() string {
 // Returns an error if this fails. Errors may be from JSON
 // unmarshaling, or may be an intweb.Error.
 func DecodeAndCheck(r *Response) (*RespData, error) {
+
+	if r.Response != nil && !(*r.Response) {
+		var s string
+		if err := json.Unmarshal(r.Data, &s); err != nil {
+			return nil, err
+		}
+		return nil, &Error{ Msg: s, Resp: nil }
+	}
+	
 	var data RespData
+	log.Printf("DEBUG: json.Unmarshal, RespData - %s", r.Data)
 	err := json.Unmarshal(r.Data, &data)
 	if err != nil {
 		return nil, err
