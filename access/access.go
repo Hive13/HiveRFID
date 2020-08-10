@@ -34,6 +34,8 @@ type Config struct {
 	PinLED int
 	// Pin number to control door lock/latch (as GPIO/BCM pin):
 	PinLock int
+	// Time to hold PinLock high before bringing it back low:
+	LockHoldTime time.Duration
 	// URL for intweb, including /api/access
 	IntwebURL string
 	// Device name for intweb
@@ -75,9 +77,9 @@ func (a AccessDeniedError) Error() string {
 }
 
 func Run(cfg *Config) {
-	// DEBUG: Move this someplace else
 	beep_pin := rpio.Pin(cfg.PinBeeper)
 	led_pin := rpio.Pin(cfg.PinLED)
+	lock_pin := rpio.Pin(cfg.PinLock)
 	if err := rpio.Open(); err != nil {
 		log.Fatal(err)
 	}
@@ -95,6 +97,8 @@ func Run(cfg *Config) {
 	// Make sure that both are off (they're active-low) when we exit:
 	defer beep_pin.High()
 	defer led_pin.High()
+	// And likewise for lock, which is active-high:
+	defer lock_pin.Low()
 	
 	log.Printf("Listening for badges...")
 	badges, err := wiegand.ListenBadges(cfg.PinD0, cfg.PinD1)
@@ -172,7 +176,7 @@ func Run(cfg *Config) {
 				break
 			}
 
-			handle_access(cfg, access, badge, why)
+			handle_access(cfg, access, badge, why, lock_pin)
 
 		// Incoming HTTP request:
 		case rq := <-http_rqs:
@@ -195,7 +199,7 @@ func Run(cfg *Config) {
 				goto done
 			}
 
-			handle_access(cfg, access, badge, why)
+			handle_access(cfg, access, badge, why, lock_pin)
 			
 			if !access {
 				err = AccessDeniedError{ why }
@@ -299,13 +303,23 @@ func (c *ServerCtx) open_door_handler(w http.ResponseWriter, r *http.Request) {
 //
 // 'why' is set only if 'access' is false, and supplies a reason why
 // access was denied.
-func handle_access(cfg *Config, access bool, badge uint64, why string) error {
+func handle_access(cfg *Config, access bool, badge uint64, why string, pin rpio.Pin) error {
 
-	// TODO: Actually *open* door...
 	if access {
 		log.Printf("************************************************************")
 		log.Printf("Access allowed for %d!", badge)
 		log.Printf("************************************************************")
+		if cfg.Verbose {
+			log.Printf("Opening lock for %s...", cfg.LockHoldTime)
+		}
+		pin.High()
+		go func() {
+			<-time.After(cfg.LockHoldTime)
+			if cfg.Verbose {
+				log.Printf("Closing lock.")
+			}
+			pin.Low()
+		}()
 	} else {
 		log.Printf("------------------------------------------------------------")
 		log.Printf("Access denied for %d (why: %s)", badge, why)

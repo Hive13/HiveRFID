@@ -5,6 +5,8 @@ package main
 
 import (
 	"log"
+	"time"
+	
 	"github.com/spf13/cobra"
 
 	"hive13/rfid/access"
@@ -12,6 +14,7 @@ import (
 
 var cfg *access.Config
 var device_key string
+var hold_msec int
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -31,8 +34,9 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Convert this data to the right format (everything else is
-		// fine but Cobra can't read bytestrings directly):
+		// fine but Cobra can't read bytestrings or durations directly):
 		cfg.IntwebDeviceKey = []byte(device_key)
+		cfg.LockHoldTime = time.Duration(hold_msec) * time.Millisecond
 
 		log.Printf("%+v", cfg)
 
@@ -53,9 +57,13 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cfg.PinLED, "led", 16,
 		"BCM/GPIO pin number for badge reader's beeper pin")
 
-	rootCmd.PersistentFlags().IntVar(&cfg.PinLock, "lock", -1,
+	rootCmd.PersistentFlags().IntVar(&cfg.PinLock, "lock", 24,
 		"BCM/GPIO pin number to control door lock/latch")
+
 	
+	rootCmd.PersistentFlags().IntVar(&hold_msec, "hold", 3000,
+		"Time in milliseconds for which to hold lock open")
+
 	rootCmd.PersistentFlags().StringVar(&cfg.IntwebURL, "url",
 		"https://intweb.at.hive13.org/api/access",
 		"URL of intweb server, including /api/access")
