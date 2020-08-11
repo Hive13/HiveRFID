@@ -1,0 +1,13 @@
+DOOR_ACCESS_OPTS="\
+--d0 17 \
+--d1 18 \
+--beeper 26 \
+--led 16 \
+--lock 24 \
+--hold 3000 \
+--url "https://intweb.whatever/api/access" \
+--device "foo" \
+--key "bar" \
+--item "baz" \
+--addr ":9000" \
+"

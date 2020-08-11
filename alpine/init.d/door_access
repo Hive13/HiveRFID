@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+
+name="Hive13 RFID Access"
+command="/home/hive13/access.bin"
+command_args="${DOOR_ACCESS_OPTS}"
+command_background=true
+error_log="/var/log/door_access.log"
+pidfile="/run/${RC_SVCNAME}.pid"
+depend() {
+	need net
+	after hwdrivers
+}
+
+start_pre() {
+        if ! [ -n "$DOOR_ACCESS_OPTS" ]; then
+                eerror "DOOR_ACCESS_OPTS is not set"
+                return 1
+        fi
+}
