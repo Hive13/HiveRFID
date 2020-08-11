@@ -235,7 +235,6 @@ func DecodeAndCheck(r *Response) (*RespData, error) {
 	}
 	
 	var data RespData
-	log.Printf("DEBUG: json.Unmarshal, RespData - %s", r.Data)
 	err := json.Unmarshal(r.Data, &data)
 	if err != nil {
 		return nil, err
