@@ -32,7 +32,7 @@ type Config struct {
 	PinBeeper int
 	// Pin number for the badge reader's LED pin (as GPIO/BCM pin):
 	PinLED int
-	// Pin number to control door lock/latch (as GPIO/BCM pin):
+	// Pin number to control door lock/latch relay (as GPIO/BCM pin):
 	PinLock int
 	// Time to hold PinLock high before bringing it back low:
 	LockHoldTime time.Duration
@@ -54,6 +54,14 @@ type Config struct {
 type ServerCtx struct {
 	// A door-open request will be sent on this channel:
 	OpenRqs chan<- HTTPOpenRequest
+
+	// Initialized pin to control door latch:
+	Lock rpio.Pin
+
+	// Timer which, upon expiration, will trigger the door latch being
+	// locked again.  Upon every lock, this should have .Stop() and
+	// .Reset() called.
+	ReLockTimer *time.Timer
 }
 
 // HTTPOpenRequest is a request to open the door (received via HTTP).
@@ -86,7 +94,6 @@ func Run(cfg *Config) {
 	defer rpio.Close()
 	beep_pin.Output()
 	led_pin.Output()
-	lock_pin.Output()
 	for x := 0; x < 5; x++ {
 		beep_pin.Toggle()
 		led_pin.Toggle()
@@ -121,10 +128,25 @@ func Run(cfg *Config) {
 	log.Printf("Using URL: %s", s.URL)
 
 	http_rqs := make(chan HTTPOpenRequest)
+
+	// Set up re-lock timer:
+	relock := time.AfterFunc(cfg.LockHoldTime, func() {
+		if cfg.Verbose {
+			log.Printf("Closing lock.")
+		}
+		lock_pin.Low()
+	})
+	// We don't want it to trigger yet:
+	relock.Stop()
+	// We'll call .Stop() & .Reset() every time we unlock.  This way,
+	// it's always the *last* unlock that sets the delay, and repeated
+	// unlocks inside that delay don't trigger repeated re-locks.
 	
-	// Start HTTP server:
+	// Start HTTP server and supply some state:
 	ctx := ServerCtx{
 		OpenRqs: http_rqs,
+		Lock: lock_pin,
+		ReLockTimer: relock,
 	}
 	http.HandleFunc(open_door_url, ctx.open_door_handler)
 	go func() {
@@ -177,7 +199,7 @@ func Run(cfg *Config) {
 				break
 			}
 
-			handle_access(cfg, access, badge, why, lock_pin)
+			ctx.handle_access(cfg, access, badge, why)
 
 		// Incoming HTTP request:
 		case rq := <-http_rqs:
@@ -200,7 +222,7 @@ func Run(cfg *Config) {
 				goto done
 			}
 
-			handle_access(cfg, access, badge, why, lock_pin)
+			ctx.handle_access(cfg, access, badge, why)
 			
 			if !access {
 				err = AccessDeniedError{ why }
@@ -304,27 +326,21 @@ func (c *ServerCtx) open_door_handler(w http.ResponseWriter, r *http.Request) {
 //
 // 'why' is set only if 'access' is false, and supplies a reason why
 // access was denied.
-func handle_access(cfg *Config, access bool, badge uint64, why string, pin rpio.Pin) error {
+func (c *ServerCtx) handle_access(cfg *Config, access bool, badge uint64,
+	why string) error {
 
 	if access {
-		log.Printf("************************************************************")
 		log.Printf("Access allowed for %d!", badge)
-		log.Printf("************************************************************")
 		if cfg.Verbose {
 			log.Printf("Opening lock for %s...", cfg.LockHoldTime)
 		}
-		pin.High()
-		go func() {
-			<-time.After(cfg.LockHoldTime)
-			if cfg.Verbose {
-				log.Printf("Closing lock.")
-			}
-			pin.Low()
-		}()
+
+		c.Lock.High()
+		
+		c.ReLockTimer.Stop()
+		c.ReLockTimer.Reset(cfg.LockHoldTime)
 	} else {
-		log.Printf("------------------------------------------------------------")
 		log.Printf("Access denied for %d (why: %s)", badge, why)
-		log.Printf("------------------------------------------------------------")
 	}
 
 	return nil
