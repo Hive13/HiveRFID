@@ -23,7 +23,7 @@ So far it has only been tested and run on Alpine Linux, but it should
 build and run the same on any Raspberry Pi distribution.
 
 For more information, see
-[https://wiki.hive13.org/view/RFID_Access#2929_Spring_Grove_-_Rework_for_Front_Door](https://wiki.hive13.org/view/RFID_Access#2929_Spring_Grove_-_Rework_for_Front_Door).
+[https://wiki.hive13.org/view/RFID_Access#2701_Front_Door](https://wiki.hive13.org/view/RFID_Access#2701_Front_Door).
 Most information that is specific to Hive13's installations is kept
 here.
 
