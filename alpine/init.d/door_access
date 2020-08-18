@@ -1,19 +1,28 @@
 #!/sbin/openrc-run
 
-name="Hive13 RFID Access"
-command="/home/hive13/access.bin"
-command_args="${DOOR_ACCESS_OPTS}"
-command_background=true
-error_log="/var/log/door_access.log"
-pidfile="/run/${RC_SVCNAME}.pid"
 depend() {
 	need net
 	after hwdrivers
 }
 
 start_pre() {
-        if ! [ -n "$DOOR_ACCESS_OPTS" ]; then
-                eerror "DOOR_ACCESS_OPTS is not set"
-                return 1
-        fi
+	if ! [ -n "$DOOR_ACCESS_OPTS" ]; then
+		eerror "DOOR_ACCESS_OPTS is not set"
+		return 1
+	fi
 }
+
+healthcheck() {
+	wget -q http://localhost:9000/ping -O -
+	# TODO: Use the variable for the address set in the config?
+}
+healthcheck_timer=60
+
+supervisor=supervise-daemon
+respawn_period=5
+name="Hive13 RFID Access"
+command="/home/hive13/access.bin"
+command_args="${DOOR_ACCESS_OPTS}"
+command_background=true
+error_log="/var/log/door_access.log"
+pidfile="/run/${RC_SVCNAME}.pid"
