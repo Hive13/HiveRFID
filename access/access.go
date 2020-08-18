@@ -19,6 +19,8 @@ import (
 const (
 	// URL to use for door opening:
 	open_door_url = "/open_door"
+	// URL to use for ping:
+	ping_url = "/ping"
 	// Form key for badge number:
 	open_door_key_badge = "badge"
 )
@@ -55,10 +57,10 @@ type Config struct {
 
 // Some state/context for HTTP server:
 type ServerCtx struct {
-	Cfg *Config
+	*Config
 
-	// A door-open request will be sent on this channel:
-	OpenRqs chan<- HTTPOpenRequest
+	// HttpOpenRequest or HttpPing will be sent over this:
+	HttpReqs chan<- HttpRequest
 
 	// Initialized pin to control door latch:
 	Lock rpio.Pin
@@ -73,16 +75,38 @@ type ServerCtx struct {
 	Cache map[uint64]time.Time
 }
 
-// HTTPOpenRequest is a request to open the door (received via HTTP).
+type HttpRequest interface {
+	SendReply(err error)
+}
+
+type AsyncReply struct {
+	Reply chan<- error
+}
+
+func (a AsyncReply) SendReply(err error) {
+	a.Reply <- err
+	close(a.Reply)
+	a.Reply = nil
+}
+
+// HttpOpenRequest is a request to open the door (received via HTTP).
 //
 // Whoever receives this request must send something back over 'Reply'
 // - either a nil if it processed the request successfully, or else an
 // error for why it would not be.  Once this is done, the entire
 // channel should be closed and the member set to nil.
-type HTTPOpenRequest struct {
+type HttpOpenRequest struct {
+	AsyncReply
 	// The badge number 
 	Badge uint64
-	Reply chan<- error
+}
+
+// HttpPing is a ping or pulse-check message received via HTTP.
+//
+// Something like Nagios might send this. The behavior with 'Reply' is
+// the same as HttpOpenRequest.
+type HttpPing struct {
+	AsyncReply
 }
 
 // Generic error class for door access being denied:
@@ -136,7 +160,7 @@ func Run(cfg *Config) {
 	log.Printf("Using intweb device: %s", s.Device)
 	log.Printf("Using URL: %s", s.URL)
 
-	http_rqs := make(chan HTTPOpenRequest)
+	http_rqs := make(chan HttpRequest)
 
 	// Set up re-lock timer:
 	relock := time.AfterFunc(cfg.LockHoldTime, func() {
@@ -153,13 +177,14 @@ func Run(cfg *Config) {
 	
 	// Start HTTP server and supply some state:
 	ctx := ServerCtx{
-		Cfg: cfg,
-		OpenRqs: http_rqs,
+		Config: cfg,
+		HttpReqs: http_rqs,
 		Lock: lock_pin,
 		ReLockTimer: relock,
 		Cache: make(map[uint64]time.Time),
 	}
-	http.HandleFunc(open_door_url, ctx.open_door_handler)
+	http.HandleFunc(open_door_url, ctx.http_open_door_handler)
+	http.HandleFunc(ping_url,      ctx.http_ping_handler)
 	go func() {
 		srv := &http.Server{
 			Addr: cfg.ListenAddr,
@@ -181,24 +206,24 @@ func Run(cfg *Config) {
 		// Badge scan:
 		case v := <-badges:
 			if cfg.Verbose {
-				log.Printf("Main loop: Received badge: %+v", v)
+				log.Printf("Main loop: Scanned badge: %+v", v)
 			}
 
 			if !v.LengthOK {
 				if cfg.Verbose {
-					log.Printf("Main loop: Badge has wrong number of bits, ignoring")
+					log.Printf("Main loop: Wrong number of bits, ignoring")
 				}
 				break
 			}
 			if !v.ParityOK {
 				if cfg.Verbose {
-					log.Printf("Main loop: Badge checksum mismatch, ignoring")
+					log.Printf("Main loop: Checksum mismatch, ignoring")
 				}
 				break
 			}
 
 			badge := v.Value
-			log.Printf("Main loop: Received badge %d", badge)
+			log.Printf("Main loop: Scanned badge %d (bits OK, checksum OK)", badge)
 
 			_, err := ctx.handle_badge(&s, badge, cache_expire)
 			if err != nil {
@@ -206,14 +231,19 @@ func Run(cfg *Config) {
 			}
 
 		// Incoming HTTP request:
-		case rq := <-http_rqs:
-			badge := rq.Badge
+		case r := <-http_rqs:
+			switch rq := r.(type) {
+			case HttpOpenRequest:
+				badge := rq.Badge
 
-			log.Printf("Main loop: Received HTTP request for badge %+v", badge)
+				log.Printf("Main loop: HTTP request for badge %+v", badge)
 
-			_, err := ctx.handle_badge(&s, badge, cache_expire)
-			rq.Reply <- err
-			close(rq.Reply)
+				_, err := ctx.handle_badge(&s, badge, cache_expire)
+				rq.SendReply(err)
+			case HttpPing:
+				log.Printf("Main loop: HTTP ping")
+				rq.SendReply(nil)
+			}
 
 		// While idle, blink LED and scrub cache if needed:
 		case <-time.After(1000 * time.Millisecond):
@@ -265,7 +295,7 @@ func (ctx *ServerCtx) handle_badge(s *intweb.Session, badge uint64,
 			return false, "", err
 		}
 
-		access, why, err = s.Access(nonce, ctx.Cfg.IntwebItem, badge)
+		access, why, err = s.Access(nonce, ctx.IntwebItem, badge)
 		if err != nil {
 			log.Printf("handle_badge: Access request failed, %s", err)
 			return false, "", err
@@ -294,7 +324,7 @@ func (ctx *ServerCtx) handle_badge(s *intweb.Session, badge uint64,
 		}
 	}
 
-	ctx.Cache[badge] = time.Now().Add(ctx.Cfg.BadgeCacheTime)
+	ctx.Cache[badge] = time.Now().Add(ctx.BadgeCacheTime)
 
 	if !access {
 		log.Printf("handle_badge: Removed badge %+v from cache (denied access)",
@@ -308,56 +338,25 @@ func (ctx *ServerCtx) handle_badge(s *intweb.Session, badge uint64,
 	return access, err
 }
 
-
-// HTTP handler for a request to /open_door:
-func (ctx *ServerCtx) open_door_handler(w http.ResponseWriter, r *http.Request) {
-	// Various sanity checks:
-	if r.Method != "POST" {
-		log.Printf("%s: Unsupported HTTP %s", open_door_url, r.Method)
-		http.Error(w, "Method is not supported.", http.StatusNotFound)
-		return
-	}
-	
-	if err := r.ParseForm(); err != nil {
-		errstr := fmt.Sprintf("Error parsing form: %s", err)
-		log.Printf("%s: %s", open_door_url, errstr)
-		http.Error(w, errstr, http.StatusBadRequest)
-		return
-	}
-
-	badges, ok := r.Form[open_door_key_badge]
-	if !ok {
-		errstr := fmt.Sprintf("Form key '%s' is missing", open_door_key_badge)
-		log.Printf("%s: %s", open_door_url, errstr)
-		http.Error(w, errstr, http.StatusBadRequest)
-		return
-	}
-	
-	badge, err := strconv.ParseUint(badges[0], 10, 0)
-	if err != nil {
-		errstr := fmt.Sprintf("Error parsing badge: %s", err)
-		log.Printf("%s: %s", open_door_url, errstr)
-		http.Error(w, errstr, http.StatusBadRequest)
-		return
-	}
-
-	// Finally, turn this to a request for the main loop:
-	err_ch := make(chan error)
-	rq := HTTPOpenRequest{
-		Badge: badge,
-		Reply: err_ch,
-	}
+// Sends a request to the main loop, waits for a response, and sends it.
+//
+// This call incorporates timeouts, such that if the main loop is
+// blocked either from receiving the request or (very rarely) if it
+// receives the request but fails to reply to it, this will eventually
+// just give up and send an HTTP error.
+//
+// This always sends something over HTTP, including a 200 OK.
+func (ctx *ServerCtx) request_to_main_loop(rq HttpRequest, err_ch chan error,
+	w http.ResponseWriter, r *http.Request) {
 
 	// Attempt to send the request to the main loop (which might be
 	// busy handling something else):
-	log.Printf("%s: Got badge %d, sending request to main loop...",
-		open_door_url, badge)
 	select {
-	case ctx.OpenRqs <- rq:
-		// Do nothing else - main loop read our request.
+	case ctx.HttpReqs <- rq:
+		// Do nothing else - the main loop read our request.
 	case <-time.After(15 * time.Second):
 		errstr := fmt.Sprintf("Timed out waiting on main loop")
-		log.Printf("%s: %s", open_door_url, errstr)
+		log.Printf("%s: %s", r.URL, errstr)
 		http.Error(w, errstr, http.StatusServiceUnavailable)
 		return
 	}
@@ -367,18 +366,82 @@ func (ctx *ServerCtx) open_door_handler(w http.ResponseWriter, r *http.Request) 
 	case err := <-err_ch:
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
+			// TODO: Is StatusUnauthorized the right error code?
 			return
 		}
 	case <-time.After(30 * time.Second):
-		// This shouldn't ever happen. HTTP requests should always
-		// time out and throw an error.
+		// This shouldn't ever happen.
 		errstr := fmt.Sprintf("Main loop received request, but didn't reply?")
-		log.Printf("%s: %s", open_door_url, errstr)
+		log.Printf("%s: %s", r.URL, errstr)
 		http.Error(w, errstr, http.StatusInternalServerError)
 		return
 	}
 
 	fmt.Fprintf(w, "OK")
+	
+}
+
+// HTTP handler for a request to /open_door:
+func (ctx *ServerCtx) http_open_door_handler(w http.ResponseWriter,
+	r *http.Request) {
+	
+	// Various sanity checks:
+	if r.Method != "POST" {
+		log.Printf("%s: Unsupported HTTP %s", r.URL, r.Method)
+		http.Error(w, "Method is not supported.", http.StatusNotFound)
+		return
+	}
+	
+	if err := r.ParseForm(); err != nil {
+		errstr := fmt.Sprintf("Error parsing form: %s", err)
+		log.Printf("%s: %s", r.URL, errstr)
+		http.Error(w, errstr, http.StatusBadRequest)
+		return
+	}
+
+	badges, ok := r.Form[open_door_key_badge]
+	if !ok {
+		errstr := fmt.Sprintf("Form key '%s' is missing", open_door_key_badge)
+		log.Printf("%s: %s", r.URL, errstr)
+		http.Error(w, errstr, http.StatusBadRequest)
+		return
+	}
+	
+	badge, err := strconv.ParseUint(badges[0], 10, 0)
+	if err != nil {
+		errstr := fmt.Sprintf("Error parsing badge: %s", err)
+		log.Printf("%s: %s", r.URL, errstr)
+		http.Error(w, errstr, http.StatusBadRequest)
+		return
+	}
+
+	// Finally, turn this to a request for the main loop:
+	err_ch := make(chan error)
+	rq := HttpOpenRequest{
+		AsyncReply: AsyncReply{
+			Reply: err_ch,
+		},
+		Badge: badge,
+	}
+	log.Printf("%s: Got badge %d, sending request to main loop...",
+		r.URL, badge)
+	ctx.request_to_main_loop(rq, err_ch, w, r)
+}
+
+// HTTP handler for a request to /ping:
+func (ctx *ServerCtx) http_ping_handler(w http.ResponseWriter, r *http.Request) {
+	
+	err_ch := make(chan error)
+	rq := HttpPing{
+		AsyncReply{Reply: err_ch},
+	}
+
+	// Attempt to send the request to the main loop (which might be
+	// busy handling something else):
+	if ctx.Verbose {
+		log.Printf("%s: Got ping request, sending to main loop...", r.URL)
+	}
+	ctx.request_to_main_loop(rq, err_ch, w, r)
 }
 
 // handle_access handles a allowed/denied request for access.
@@ -396,14 +459,14 @@ func (ctx *ServerCtx) handle_access(access bool, badge uint64,
 
 	if access {
 		log.Printf("Access allowed for %d!", badge)
-		if ctx.Cfg.Verbose {
-			log.Printf("Opening lock for %s...", ctx.Cfg.LockHoldTime)
+		if ctx.Verbose {
+			log.Printf("Opening lock for %s...", ctx.LockHoldTime)
 		}
 
 		ctx.Lock.High()
 		
 		ctx.ReLockTimer.Stop()
-		ctx.ReLockTimer.Reset(ctx.Cfg.LockHoldTime)
+		ctx.ReLockTimer.Reset(ctx.LockHoldTime)
 	} else {
 		log.Printf("Access denied for %d (why: %s)", badge, why)
 	}
