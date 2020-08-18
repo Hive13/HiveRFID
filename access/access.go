@@ -241,7 +241,9 @@ func Run(cfg *Config) {
 				_, err := ctx.handle_badge(&s, badge, cache_expire)
 				rq.SendReply(err)
 			case HttpPing:
-				log.Printf("Main loop: HTTP ping")
+				if cfg.Verbose {
+					log.Printf("Main loop: HTTP ping")
+				}
 				rq.SendReply(nil)
 			}
 
