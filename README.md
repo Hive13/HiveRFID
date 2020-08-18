@@ -9,6 +9,9 @@ This contains code for Hive13's RFID & door access server, which:
   member wanting to trigger a door release remotely)
 - communicates with [intweb](https://github.com/Hive13/HiveWeb) to
   verify that this badge has access
+- caches allowed badges for a configurable amount of time to speed up
+  process for repeat badges, but still requests access in the
+  background so that intweb still logs an access
 - triggers opening the door lock
 
 For the older Arduino-based version of this that I did not write, see

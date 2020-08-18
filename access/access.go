@@ -44,6 +44,9 @@ type Config struct {
 	IntwebDeviceKey []byte
 	// Item to try to access
 	IntwebItem string
+	// Length of time to keep a badge in cache for (starting from its
+	// last use):
+	BadgeCacheTime time.Duration
 	// Address for HTTP server to listen on
 	ListenAddr string
 	// True to log more verbosely (e.g. all HTTP POSTs & replies)
@@ -52,6 +55,8 @@ type Config struct {
 
 // Some state/context for HTTP server:
 type ServerCtx struct {
+	Cfg *Config
+
 	// A door-open request will be sent on this channel:
 	OpenRqs chan<- HTTPOpenRequest
 
@@ -62,6 +67,10 @@ type ServerCtx struct {
 	// locked again.  Upon every lock, this should have .Stop() and
 	// .Reset() called.
 	ReLockTimer *time.Timer
+
+	// Cached badges. Key = badge number, value = time at which to
+	// expire this badge.
+	Cache map[uint64]time.Time
 }
 
 // HTTPOpenRequest is a request to open the door (received via HTTP).
@@ -144,9 +153,11 @@ func Run(cfg *Config) {
 	
 	// Start HTTP server and supply some state:
 	ctx := ServerCtx{
+		Cfg: cfg,
 		OpenRqs: http_rqs,
 		Lock: lock_pin,
 		ReLockTimer: relock,
+		Cache: make(map[uint64]time.Time),
 	}
 	http.HandleFunc(open_door_url, ctx.open_door_handler)
 	go func() {
@@ -159,6 +170,8 @@ func Run(cfg *Config) {
 		log.Fatal(srv.ListenAndServe())
 	}()
 
+	cache_expire := make(chan uint64)
+	
 	// We now have two channels that receive request to open the door:
 	// 'badges' for badge scans, 'http_rqs' for HTTP requests.
 	// Monitor both. They intentionally block each other.
@@ -186,66 +199,118 @@ func Run(cfg *Config) {
 
 			badge := v.Value
 			log.Printf("Main loop: Received badge %d", badge)
-			
-			nonce, err := s.GetNonce()
-			if err != nil {
-				log.Printf("Main loop: Failed to get nonce, %s", err)
-				break
-			}
 
-			access, why, err := s.Access(nonce, cfg.IntwebItem, badge)
+			_, err := ctx.handle_badge(&s, badge, cache_expire)
 			if err != nil {
-				log.Printf("Main loop: Access request failed, %s", err)
-				break
+				log.Printf("%+v", err)
 			}
-
-			ctx.handle_access(cfg, access, badge, why)
 
 		// Incoming HTTP request:
 		case rq := <-http_rqs:
-			var access bool
-			var why string
-			var err error
 			badge := rq.Badge
 
-			log.Printf("Main loop: Received HTTP request for badge %d", badge)
+			log.Printf("Main loop: Received HTTP request for badge %+v", badge)
 
-			nonce, err := s.GetNonce()
-			if err != nil {
-				log.Printf("Main loop: Failed to get nonce, %s", err)
-				goto done
-			}
-
-			access, why, err = s.Access(nonce, cfg.IntwebItem, badge)
-			if err != nil {
-				log.Printf("Main loop: Access request failed, %s", err)
-				goto done
-			}
-
-			ctx.handle_access(cfg, access, badge, why)
-			
-			if !access {
-				err = AccessDeniedError{ why }
-				goto done
-			}
-
-		done:
+			_, err := ctx.handle_badge(&s, badge, cache_expire)
 			rq.Reply <- err
 			close(rq.Reply)
 
-		// Blink LED to indicate that we're idle:
+		// While idle, blink LED and scrub cache if needed:
 		case <-time.After(1000 * time.Millisecond):
+			ctx.scrub_cache()
 			go func() {
 				led_pin.Low()
 				<-time.After(50 * time.Millisecond)
 				led_pin.High()
 			}()
+			
+		// Expire cache entries from background requests as-needed:
+		case badge := <-cache_expire:
+			log.Printf("Main loop: Removed badge %+v from cache (denied access in background)", badge)
+			delete(ctx.Cache, badge)
 		}
 	}
 }
 
+// Handle door-open request (whether from badge reader or from HTTP).
+//
+// This returns: (access allowed, error).
+//
+// If error is non-nil, something prevented access from even being
+// checked.  If error is nil, but access is false, then an intweb call
+// denied access to this badge.  If error is nil and access is true,
+// then access was allowed either by an intweb call or by the badge
+// already being cached.
+//
+// If access is true, but the badge was cached, then a goroutine is
+// started which checks the badge with intweb in the background.  If
+// access for this badge is denied, the badge is sent over
+// 'cache_expire'. (The point of this is so the main loop can safely
+// clear a badge entry out of the cache if it was denied access.)
+//
+// Cache is always updated if there is no error. A badge that is
+// granted access always has its cache expiration updated. A badge
+// that is denied access always has its cache entry removed.
+func (ctx *ServerCtx) handle_badge(s *intweb.Session, badge uint64,
+	cache_expire chan<- uint64) (bool, error) {
+
+	access := false
+	var why string
+	var err error
+
+	check_intweb := func() (bool, string, error) {
+		nonce, err := s.GetNonce()
+		if err != nil {
+			log.Printf("handle_badge: Failed to get nonce, %s", err)
+			return false, "", err
+		}
+
+		access, why, err = s.Access(nonce, ctx.Cfg.IntwebItem, badge)
+		if err != nil {
+			log.Printf("handle_badge: Access request failed, %s", err)
+			return false, "", err
+		}
+
+		return access, why, nil
+	}
+
+	// Check cache first:
+	_, access_cache := ctx.Cache[badge]
+	if access_cache {
+		// If it was in the cache, then call check_intweb - but in the
+		// background:
+		log.Printf("handle_badge: Badge %+v is in cache", badge)
+		access = true
+		go func() {
+			acc2, _, err2 := check_intweb()
+			if err2 == nil && !acc2 {
+				cache_expire <- badge
+			}
+		}()
+	} else {
+		// If it wasn't in the cache, then check intweb now:
+		if access, why, err = check_intweb(); err != nil {
+			return false, err
+		}
+	}
+
+	ctx.Cache[badge] = time.Now().Add(ctx.Cfg.BadgeCacheTime)
+
+	if !access {
+		log.Printf("handle_badge: Removed badge %+v from cache (denied access)",
+			badge)
+		delete(ctx.Cache, badge)
+		err = AccessDeniedError{ why }
+	}
+	
+	ctx.handle_access(access, badge, why)
+	
+	return access, err
+}
+
+
 // HTTP handler for a request to /open_door:
-func (c *ServerCtx) open_door_handler(w http.ResponseWriter, r *http.Request) {
+func (ctx *ServerCtx) open_door_handler(w http.ResponseWriter, r *http.Request) {
 	// Various sanity checks:
 	if r.Method != "POST" {
 		log.Printf("%s: Unsupported HTTP %s", open_door_url, r.Method)
@@ -288,7 +353,7 @@ func (c *ServerCtx) open_door_handler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s: Got badge %d, sending request to main loop...",
 		open_door_url, badge)
 	select {
-	case c.OpenRqs <- rq:
+	case ctx.OpenRqs <- rq:
 		// Do nothing else - main loop read our request.
 	case <-time.After(15 * time.Second):
 		errstr := fmt.Sprintf("Timed out waiting on main loop")
@@ -326,22 +391,43 @@ func (c *ServerCtx) open_door_handler(w http.ResponseWriter, r *http.Request) {
 //
 // 'why' is set only if 'access' is false, and supplies a reason why
 // access was denied.
-func (c *ServerCtx) handle_access(cfg *Config, access bool, badge uint64,
+func (ctx *ServerCtx) handle_access(access bool, badge uint64,
 	why string) error {
 
 	if access {
 		log.Printf("Access allowed for %d!", badge)
-		if cfg.Verbose {
-			log.Printf("Opening lock for %s...", cfg.LockHoldTime)
+		if ctx.Cfg.Verbose {
+			log.Printf("Opening lock for %s...", ctx.Cfg.LockHoldTime)
 		}
 
-		c.Lock.High()
+		ctx.Lock.High()
 		
-		c.ReLockTimer.Stop()
-		c.ReLockTimer.Reset(cfg.LockHoldTime)
+		ctx.ReLockTimer.Stop()
+		ctx.ReLockTimer.Reset(ctx.Cfg.LockHoldTime)
 	} else {
 		log.Printf("Access denied for %d (why: %s)", badge, why)
 	}
 
 	return nil
+}
+
+// scrub_cache removes expired entries in the badge cache.  It returns
+// the number of entries removed.
+func (ctx *ServerCtx) scrub_cache() int {
+
+	now := time.Now()
+	to_del := make(map[uint64]bool)
+	
+	for badge, expiration := range ctx.Cache {
+		if now.After(expiration) {
+			log.Printf("scrub_cache: Expiring badge %+v", badge)
+			to_del[badge] = true
+		}
+	}
+
+	for badge, _ := range to_del {
+		delete(ctx.Cache, badge)
+	}
+
+	return len(to_del)
 }

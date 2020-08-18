@@ -15,6 +15,7 @@ import (
 var cfg *access.Config
 var device_key string
 var hold_msec int
+var cache_hours int
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -37,7 +38,8 @@ var rootCmd = &cobra.Command{
 		// fine but Cobra can't read bytestrings or durations directly):
 		cfg.IntwebDeviceKey = []byte(device_key)
 		cfg.LockHoldTime = time.Duration(hold_msec) * time.Millisecond
-
+		cfg.BadgeCacheTime = time.Duration(cache_hours) * time.Hour
+		
 		log.Printf("%+v", cfg)
 
 		// We have a configuration. Go run the server.
@@ -46,7 +48,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	cfg = &access.Config{}
+	cfg = &access.Config{
+	}
 
 	rootCmd.PersistentFlags().IntVar(&cfg.PinD0, "d0", 17,
 		"BCM/GPIO pin number for badge reader's Wiegand D0 pin")
@@ -60,10 +63,12 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cfg.PinLock, "lock", 24,
 		"BCM/GPIO pin number to control door lock/latch")
 
-	
 	rootCmd.PersistentFlags().IntVar(&hold_msec, "hold", 3000,
 		"Time in milliseconds for which to hold lock open")
 
+	rootCmd.PersistentFlags().IntVar(&cache_hours, "cache_time", 96,
+		"Time in hours to keep a badge in cache")
+	
 	rootCmd.PersistentFlags().StringVar(&cfg.IntwebURL, "url",
 		"https://intweb.at.hive13.org/api/access",
 		"URL of intweb server, including /api/access")
