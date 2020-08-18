@@ -46,6 +46,18 @@ specified, some mandatory:
 - Device, device key, and item being accessed on intweb
 - Address for the HTTP server
 
+HTTP API
+--------
+
+This runs an HTTP server which supports the below requests:
+
+- POST to `/open_door`: Request that the door open, identically to as
+  if a badge were scanned. Supply the badge number with form key
+  `badge` set to the badge number, exactly as it appears in the
+  database.
+- GET to `/ping`: Return a 200 OK if the server's main loop is
+  responding. Return an error in any other case.
+
 Development
 -----------
 
