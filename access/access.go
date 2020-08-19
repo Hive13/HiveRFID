@@ -130,6 +130,7 @@ func Run(cfg *Config) {
 	defer rpio.Close()
 	beep_pin.Output()
 	led_pin.Output()
+	lock_pin.Output()
 	for x := 0; x < 5; x++ {
 		beep_pin.Toggle()
 		led_pin.Toggle()
