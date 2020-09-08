@@ -30,6 +30,19 @@ For more information, see
 Most information that is specific to Hive13's installations is kept
 here.
 
+It makes some sparse attempts at communication via the RFID reader
+itself, which has an LED and a beeper:
+
+- At successful startup, it will quickly beep several times.
+- When it is running, it will blink the LED at regular intervals.
+- When a badge is scanned, in addition to the reader's normal
+  beeps and LED blinking (which cannot be controlled), it will:
+  - Sound one long beep on a successful access
+  - Sound two long beeps on a *denied* access
+  - Sound three long beeps on any error that prevented it
+    from even being able to query access with intweb (typically
+    network problems or misconfiguration)
+
 Running
 -------
 
