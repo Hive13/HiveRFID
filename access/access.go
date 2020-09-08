@@ -64,6 +64,9 @@ type ServerCtx struct {
 
 	// Initialized pin to control door latch:
 	Lock rpio.Pin
+	
+	// Initialized pin to control beeper (active-low):
+	Beep rpio.Pin
 
 	// Timer which, upon expiration, will trigger the door latch being
 	// locked again.  Upon every lock, this should have .Stop() and
@@ -127,7 +130,6 @@ func Run(cfg *Config) {
 	defer rpio.Close()
 	beep_pin.Output()
 	led_pin.Output()
-	lock_pin.Output()
 	for x := 0; x < 5; x++ {
 		beep_pin.Toggle()
 		led_pin.Toggle()
@@ -181,6 +183,7 @@ func Run(cfg *Config) {
 		Config: cfg,
 		HttpReqs: http_rqs,
 		Lock: lock_pin,
+		Beep: beep_pin,
 		ReLockTimer: relock,
 		Cache: make(map[uint64]time.Time),
 	}
@@ -323,6 +326,17 @@ func (ctx *ServerCtx) handle_badge(s *intweb.Session, badge uint64,
 	} else {
 		// If it wasn't in the cache, then check intweb now:
 		if access, why, err = check_intweb(); err != nil {
+			// Beep 3 times to indicate an error that prevented even
+			// checking access:
+			go func() {
+				for i := 0; i < 3; i += 1 {
+					ctx.Beep.Low()
+					<-time.After(500 * time.Millisecond)
+					ctx.Beep.High()
+					<-time.After(500 * time.Millisecond)
+				}
+			}()
+			
 			return false, err
 		}
 	}
@@ -466,12 +480,30 @@ func (ctx *ServerCtx) handle_access(access bool, badge uint64,
 			log.Printf("Opening lock for %s...", ctx.LockHoldTime)
 		}
 
+		// Beep once for access allowed:
+		go func() {
+			ctx.Beep.Low()
+			<-time.After(500 * time.Millisecond)
+			ctx.Beep.High()
+			<-time.After(500 * time.Millisecond)
+		}()
+			
 		ctx.Lock.High()
 		
 		ctx.ReLockTimer.Stop()
 		ctx.ReLockTimer.Reset(ctx.LockHoldTime)
 	} else {
 		log.Printf("Access denied for %d (why: %s)", badge, why)
+
+		// Beep twice for access denied:
+		go func() {
+			for i := 0; i < 2; i += 1 {
+				ctx.Beep.Low()
+				<-time.After(500 * time.Millisecond)
+				ctx.Beep.High()
+				<-time.After(500 * time.Millisecond)
+			}
+		}()
 	}
 
 	return nil
