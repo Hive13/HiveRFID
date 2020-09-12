@@ -1,0 +1,96 @@
+# This is a YAML file for the current dev branch of WireViz, as in:
+# https://github.com/formatc1702/WireViz/tree/dev
+# from around 2020 September.
+
+# TODO:
+# - Set more appropriate wire sizes? (are they drawn this way?)
+# - Fix colors of 3.3V and 5.5V wires from Pi
+# - Rename/reorganize bundle cables to make more sense
+
+connectors:
+  Ras Pi:
+    type: GPIO header
+    #subtype: female
+    pins: [GND, +3.3V, +5V, BCM16, BCM17, BCM18, BCM24, BCM26]
+  PoE 12V:
+    type: uctronics terminal
+    pins: [GND, +12V]
+  Wiegand:
+    type: RFID badge reader
+    pins: [GND, DC_IN, D0, D1, Beep, LED]
+  Wiegand crimps:
+    pins: [GND, DC_IN, D0, D1, Beep, LED]
+  DIN:
+    type: DIN terminals
+    pins: [GND, +12V, Lock+, D1, D0, Beep, LED]
+  Shift:
+    type: Level shifter
+    pins: [GND, LV, HV, RXI_1, RXI_2, RXO_1, RXO_2]
+  HES 5000 Strike:
+    pins: [Black, Red+Green, Red, Purple]
+  Relay:
+    pins: [DC-, DC+, IN, "NO ", NC, COM]
+
+cables:
+  G:
+    category: bundle
+    colors: [BK, GY, WH, OG, OGWH, GN, GNWH]
+    # Not sure the first two in G are right
+  S:
+    category: bundle
+    colors: [GN, GNWH]
+  Cat 6 for RFID:
+    colors: [BN, BNWH, BU, BUWH, GN, GNWH, OGWH, OG]
+  Cat 6 pairs for Strike:
+    colors: [BU, GN, OG, BN]
+  R:
+    category: bundle
+    colors: [BUWH, BU, BN, RD, RD]
+  W:
+    category: bundle
+    colors: [BK, RD, GN, WH, VT, GY]
+  P:
+    category: bundle
+    colors: [WH, RD]
+
+connections:
+  -
+    - Relay: [DC-, DC+, IN]
+    - R: [1-3]
+    - Ras Pi: [GND, +5V, BCM24]
+  -
+    - Relay: [COM]
+    - R: [5]
+    - PoE 12V: [+12V]
+  -
+    - Relay: ["NO "]
+    - R: [4]
+    - DIN: [Lock+]
+  -
+    - Ras Pi: [GND, BCM16, BCM26]
+    - G: [1, 4-5]
+    - DIN: [GND, LED, Beep]
+  -
+    - Wiegand crimps: [GND, GND, DC_IN, DC_IN, D0, D1, Beep, LED]
+    - Cat 6 for RFID: [1-8]
+    - DIN: [GND, GND, +12V, +12V, D0, D1, Beep, LED]
+  -
+    - Wiegand: [GND, DC_IN, D0, D1, Beep, LED]
+    - W: [1-6]
+    - Wiegand crimps: [GND, DC_IN, D0, D1, Beep, LED]
+  -
+    - DIN: [D0, D1]
+    - S: [1-2]
+    - Shift: [RXI_1, RXI_2]
+  -
+    - Ras Pi: [GND, +3.3V, +5V, BCM17, BCM18]
+    - G: [1, 2, 3, 6, 7]
+    - Shift: [GND, LV, HV, RXO_1, RXO_2]
+  -
+    - HES 5000 Strike: [Black, Red+Green, Red, Purple]
+    - Cat 6 pairs for Strike: [1-4]
+    - DIN: [GND, GND, Lock+, Lock+]
+  -
+    - PoE 12V: [GND, +12V]
+    - P: [1-2]
+    - DIN: [GND, +12V]
