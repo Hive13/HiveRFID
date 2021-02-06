@@ -140,11 +140,9 @@ func Run(cfg *Config) {
 	beep_pin := rpio.Pin(cfg.PinBeeper)
 	led_pin := rpio.Pin(cfg.PinLED)
 	lock_pin := rpio.Pin(cfg.PinLock)
-	var sensor_pin *rpio.Pin
+	var sensor_pin *rpio.Pin = nil
 	if cfg.PinSensor >= 0 {
 		p := rpio.Pin(cfg.PinSensor)
-		p.Input()
-		p.PullUp()
 		sensor_pin = &p
 	}
 	if err := rpio.Open(); err != nil {
@@ -154,6 +152,10 @@ func Run(cfg *Config) {
 	beep_pin.Output()
 	led_pin.Output()
 	lock_pin.Output()
+	if sensor_pin != nil {
+		sensor_pin.Input()
+		sensor_pin.PullUp()
+	}
 	for x := 0; x < 5; x++ {
 		beep_pin.Toggle()
 		led_pin.Toggle()
