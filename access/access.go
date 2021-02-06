@@ -309,7 +309,13 @@ func (ctx *ServerCtx) monitor_door() {
 		*ctx.Sensor)
 	settle := 300 * time.Millisecond
 	for s := range sensor.ListenSensor(*ctx.Sensor, settle) {
-		log.Printf("monitor_door(): %t", s)
+		status := ""
+		if ctx.SensorPolarity == s {
+			status = "open"
+		} else {
+			status = "closed"
+		}
+		log.Printf("monitor_door(): %s", status)
 	}
 }
 

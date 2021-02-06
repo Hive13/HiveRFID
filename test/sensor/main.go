@@ -26,31 +26,3 @@ func main() {
 		log.Printf("%t", s)
 	}
 }
-
-func ListenSensor(p rpio.Pin, settle time.Duration) <-chan bool {
-
-	ch := make(chan bool)
-
-	go func() {
-		last_state := false
-		state := false
-		state_sent := false
-
-		for {
-			last_state = state
-			state = p.Read() == rpio.High
-
-			if state != last_state {
-				<-time.After(settle)
-			} else {
-				if state != state_sent {
-					ch <- state
-					state_sent = state
-				}
-				<-time.After(10 * time.Millisecond)
-			}
-		}
-	}()
-
-	return ch
-}
