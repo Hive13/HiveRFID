@@ -58,7 +58,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cfg.PinBeeper, "beeper", 26,
 		"BCM/GPIO pin number for badge reader's beeper pin")
 	rootCmd.PersistentFlags().IntVar(&cfg.PinLED, "led", 16,
-		"BCM/GPIO pin number for badge reader's beeper pin")
+		"BCM/GPIO pin number for badge reader's LED pin")
 
 	rootCmd.PersistentFlags().IntVar(&cfg.PinLock, "lock", 24,
 		"BCM/GPIO pin number to control door lock/latch")
