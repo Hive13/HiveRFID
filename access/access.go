@@ -13,6 +13,7 @@ import (
 	"github.com/stianeikeland/go-rpio/v4"
 	
 	"hive13/rfid/intweb"
+	"hive13/rfid/sensor"
 	"hive13/rfid/wiegand"
 )
 
@@ -26,18 +27,29 @@ const (
 )
 
 type Config struct {
-	// Pin number for Wiegand D0 of the badge reader (as GPIO/BCM pin):
+	// Pin number (input) for Wiegand D0 of the badge reader (as
+	// GPIO/BCM pin):
 	PinD0 int
-	// Pin number for Wiegand D1 of the badge reader (as GPIO/BCM pin):
+	// Pin number (input) for Wiegand D1 of the badge reader (as
+	// GPIO/BCM pin):
 	PinD1 int
-	// Pin number for the badge reader's beeper pin (as GPIO/BCM pin):
+	// Pin number (output) for the badge reader's beeper pin (as
+	// GPIO/BCM pin):
 	PinBeeper int
-	// Pin number for the badge reader's LED pin (as GPIO/BCM pin):
+	// Pin number (output) for the badge reader's LED pin (as GPIO/BCM
+	// pin):
 	PinLED int
-	// Pin number to control door lock/latch relay (as GPIO/BCM pin):
+	// Pin number (output) to control door lock/latch relay (as
+	// GPIO/BCM pin):
 	PinLock int
 	// Time to hold PinLock high before bringing it back low:
 	LockHoldTime time.Duration
+	// Pin number (input) for door opening sensor; if -1, do not use
+	// door sensor:
+	PinSensor int
+	// If true: PinSensor is high when door is open, low when closed.
+	// If false: PinSensor is low when door is open, high when closed.
+	SensorPolarity bool
 	// URL for intweb, including /api/access
 	IntwebURL string
 	// Device name for intweb
@@ -68,6 +80,10 @@ type ServerCtx struct {
 	// Initialized pin to control beeper (active-low):
 	Beep rpio.Pin
 
+	// If non-nil, initialized pin for door sensor (see
+	// SensorPolarity):
+	Sensor *rpio.Pin
+	
 	// Timer which, upon expiration, will trigger the door latch being
 	// locked again.  Upon every lock, this should have .Stop() and
 	// .Reset() called.
@@ -124,6 +140,13 @@ func Run(cfg *Config) {
 	beep_pin := rpio.Pin(cfg.PinBeeper)
 	led_pin := rpio.Pin(cfg.PinLED)
 	lock_pin := rpio.Pin(cfg.PinLock)
+	var sensor_pin *rpio.Pin
+	if cfg.PinSensor >= 0 {
+		p := rpio.Pin(cfg.PinSensor)
+		p.Input()
+		p.PullUp()
+		sensor_pin = &p
+	}
 	if err := rpio.Open(); err != nil {
 		log.Fatal(err)
 	}
@@ -178,16 +201,24 @@ func Run(cfg *Config) {
 	// We'll call .Stop() & .Reset() every time we unlock.  This way,
 	// it's always the *last* unlock that sets the delay, and repeated
 	// unlocks inside that delay don't trigger repeated re-locks.
-	
-	// Start HTTP server and supply some state:
+
 	ctx := ServerCtx{
 		Config: cfg,
 		HttpReqs: http_rqs,
 		Lock: lock_pin,
 		Beep: beep_pin,
+		Sensor: sensor_pin,
 		ReLockTimer: relock,
 		Cache: make(map[uint64]time.Time),
 	}
+
+	// If there is a door sensor, then start a goroutine to monitor it
+	// in the background:
+	if ctx.Sensor != nil {
+		go ctx.monitor_door()
+	}
+	
+	// Start HTTP server and supply some state:
 	http.HandleFunc(open_door_url, ctx.http_open_door_handler)
 	http.HandleFunc(ping_url,      ctx.http_ping_handler)
 	go func() {
@@ -266,6 +297,17 @@ func Run(cfg *Config) {
 			log.Printf("Main loop: Removed badge %+v from cache (denied access in background)", badge)
 			delete(ctx.Cache, badge)
 		}
+	}
+}
+
+// Monitor the door sensor for activity.  (Mostly a placeholder
+// function so far.)
+func (ctx *ServerCtx) monitor_door() {
+	log.Printf("Started monitor_door() goroutine for pin %+v",
+		*ctx.Sensor)
+	settle := 300 * time.Millisecond
+	for s := range sensor.ListenSensor(*ctx.Sensor, settle) {
+		log.Printf("monitor_door(): %t", s)
 	}
 }
 

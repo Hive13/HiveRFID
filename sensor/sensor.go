@@ -1,32 +1,14 @@
-package main
+package sensor
 
 import (
-	"log"
 	"time"
-
-	"hive13/rfid/sensor"
-	
 	"github.com/stianeikeland/go-rpio/v4"
 )
 
-
-func main() {
-	pin_num := 6
-
-	pin := rpio.Pin(pin_num)
-	if err := rpio.Open(); err != nil {
-		log.Fatal(err)
-	}
-	defer rpio.Close()
-	pin.Input()
-	pin.PullUp()
-
-	settle := 300 * time.Millisecond
-	for s := range sensor.ListenSensor(pin, settle) {
-		log.Printf("%t", s)
-	}
-}
-
+// Listen on pin 'p' for state-changes, allowing the given amount of
+// time for the pin's state to settle.  Returns a channel which will
+// send a 'true' every time it transitions (after this settling) to a
+// high value, and a 'false' every time it transitions to a low value.
 func ListenSensor(p rpio.Pin, settle time.Duration) <-chan bool {
 
 	ch := make(chan bool)

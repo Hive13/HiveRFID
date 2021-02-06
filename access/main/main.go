@@ -52,16 +52,20 @@ func init() {
 	}
 
 	rootCmd.PersistentFlags().IntVar(&cfg.PinD0, "d0", 17,
-		"BCM/GPIO pin number for badge reader's Wiegand D0 pin")
+		"BCM/GPIO input pin number for badge reader's Wiegand D0 pin")
 	rootCmd.PersistentFlags().IntVar(&cfg.PinD1, "d1", 18,
-		"BCM/GPIO pin number for badge reader's Wiegand D1 pin")
+		"BCM/GPIO input pin number for badge reader's Wiegand D1 pin")
 	rootCmd.PersistentFlags().IntVar(&cfg.PinBeeper, "beeper", 26,
-		"BCM/GPIO pin number for badge reader's beeper pin")
+		"BCM/GPIO output pin number for badge reader's beeper pin")
 	rootCmd.PersistentFlags().IntVar(&cfg.PinLED, "led", 16,
-		"BCM/GPIO pin number for badge reader's LED pin")
+		"BCM/GPIO output pin number for badge reader's LED pin")
+	rootCmd.PersistentFlags().IntVar(&cfg.PinSensor, "sensor", -1,
+		"BCM/GPIO input pin number for door sensor; if -1, disable")
+	rootCmd.PersistentFlags().BoolVar(&cfg.SensorPolarity, "polarity", true,
+		"If true, open door = sensor high, closed = low. If false, open = low, closed = high.")
 
 	rootCmd.PersistentFlags().IntVar(&cfg.PinLock, "lock", 24,
-		"BCM/GPIO pin number to control door lock/latch")
+		"BCM/GPIO output pin number to control door lock/latch")
 
 	rootCmd.PersistentFlags().IntVar(&hold_msec, "hold", 3000,
 		"Time in milliseconds for which to hold lock open")
