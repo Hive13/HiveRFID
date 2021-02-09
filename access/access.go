@@ -63,6 +63,19 @@ type Config struct {
 	BadgeCacheTime time.Duration
 	// Address for HTTP server to listen on
 	ListenAddr string
+	// Address for MQTT broker (e.g. "tcp://foobar.com:1883")
+	MqttBrokerAddr string
+	// Username for MQTT broker (ignored if empty)
+	MqttUsername string
+	// Password for MQTT broker (ignored if empty)
+	MqttPassword string
+	// Client ID for MQTT broker (ignored if empty)
+	MqttClientID string
+	// MQTT topic to which we'll publish sensor readings
+	MqttTopicSensor string
+	// MQTT topic to which we'll publish badge scans
+	MqttTopicBadge string
+	
 	// True to log more verbosely (e.g. all HTTP POSTs & replies)
 	Verbose bool
 }

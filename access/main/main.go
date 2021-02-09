@@ -70,7 +70,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&hold_msec, "hold", 3000,
 		"Time in milliseconds for which to hold lock open")
 
-	rootCmd.PersistentFlags().IntVar(&cache_hours, "cache_time", 96,
+	rootCmd.PersistentFlags().IntVar(&cache_hours, "cache-time", 96,
 		"Time in hours to keep a badge in cache")
 	
 	rootCmd.PersistentFlags().StringVar(&cfg.IntwebURL, "url",
@@ -90,6 +90,19 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfg.ListenAddr, "addr",
 		":9000", "Address for HTTP server to listen on")
 
+	rootCmd.PersistentFlags().StringVar(&cfg.MqttBrokerAddr, "broker",
+		"", "MQTT broker address, e.g. tcp://foobar.com:1883")
+	rootCmd.PersistentFlags().StringVar(&cfg.MqttTopicSensor, "topic-sensor",
+		"door/sensor", "MQTT topic to publish door sensor readings")
+	rootCmd.PersistentFlags().StringVar(&cfg.MqttTopicBadge, "topic-badge",
+		"door/badge", "MQTT topic to publish badge scans")
+	rootCmd.PersistentFlags().StringVar(&cfg.MqttUsername, "mqtt-username",
+		"", "Username for MQTT")
+	rootCmd.PersistentFlags().StringVar(&cfg.MqttPassword, "mqtt-password",
+		"", "Password for MQTT")
+	rootCmd.PersistentFlags().StringVar(&cfg.MqttClientID, "mqtt-client-id",
+		"", "Client ID for MQTT")
+	
 	rootCmd.PersistentFlags().BoolVarP(&cfg.Verbose, "verbose", "v",
 		false, "Enable more verbose logging")
 }
