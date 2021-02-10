@@ -281,7 +281,7 @@ func Run(cfg *Config) {
 
 			// Publish badge scan to MQTT if we can:
 			if ctx.MqttClient != nil {
-				b_str := fmt.Sprintf("%s", badge)
+				b_str := fmt.Sprintf("%d", badge)
 				ctx.MqttClient.Publish(cfg.Mqtt.TopicBadge, 0, false, b_str)
 			}
 
