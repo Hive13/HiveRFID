@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/stianeikeland/go-rpio/v4"
+	MQTT "github.com/eclipse/paho.mqtt.golang"
 	
 	"hive13/rfid/intweb"
+	"hive13/rfid/mqtt"
 	"hive13/rfid/sensor"
 	"hive13/rfid/wiegand"
 )
@@ -63,30 +65,23 @@ type Config struct {
 	BadgeCacheTime time.Duration
 	// Address for HTTP server to listen on
 	ListenAddr string
-	// Address for MQTT broker (e.g. "tcp://foobar.com:1883")
-	MqttBrokerAddr string
-	// Username for MQTT broker (ignored if empty)
-	MqttUsername string
-	// Password for MQTT broker (ignored if empty)
-	MqttPassword string
-	// Client ID for MQTT broker (ignored if empty)
-	MqttClientID string
-	// MQTT topic to which we'll publish sensor readings
-	MqttTopicSensor string
-	// MQTT topic to which we'll publish badge scans
-	MqttTopicBadge string
-	
+
+	Mqtt mqtt.Config
+
 	// True to log more verbosely (e.g. all HTTP POSTs & replies)
 	Verbose bool
 }
 
-// Some state/context for HTTP server:
+// Some state/context for various pieces:
 type ServerCtx struct {
 	*Config
 
 	// HttpOpenRequest or HttpPing will be sent over this:
 	HttpReqs chan<- HttpRequest
 
+	// MQTT client (or nil if no broker was given):
+	MqttClient MQTT.Client
+	
 	// Initialized pin to control door latch:
 	Lock rpio.Pin
 	
@@ -220,6 +215,7 @@ func Run(cfg *Config) {
 	ctx := ServerCtx{
 		Config: cfg,
 		HttpReqs: http_rqs,
+		MqttClient: nil, // add in later
 		Lock: lock_pin,
 		Beep: beep_pin,
 		Sensor: sensor_pin,
@@ -231,6 +227,13 @@ func Run(cfg *Config) {
 	// in the background:
 	if ctx.Sensor != nil {
 		go ctx.monitor_door()
+	}
+
+	// If an MQTT broker address was given, try to connect. (This is
+	// done async and it may fail; it will try in the background to
+	// reconnect.)
+	if cfg.Mqtt.BrokerAddr != "" {
+		ctx.MqttClient = mqtt.NewClient(cfg.Mqtt)
 	}
 	
 	// Start HTTP server and supply some state:
@@ -275,6 +278,12 @@ func Run(cfg *Config) {
 
 			badge := v.Value
 			log.Printf("Main loop: Scanned badge %d (bits OK, checksum OK)", badge)
+
+			// Publish badge scan to MQTT if we can:
+			if ctx.MqttClient != nil {
+				b_str := fmt.Sprintf("%s", badge)
+				ctx.MqttClient.Publish(cfg.Mqtt.TopicBadge, 0, false, b_str)
+			}
 
 			_, err := ctx.handle_badge(&s, badge, cache_expire)
 			if err != nil {
@@ -329,6 +338,11 @@ func (ctx *ServerCtx) monitor_door() {
 			status = "closed"
 		}
 		log.Printf("monitor_door(): %s", status)
+		
+		// Publish new door state to MQTT if we can:
+		if ctx.MqttClient != nil {
+			ctx.MqttClient.Publish(ctx.Mqtt.TopicSensor, 0, false, status)
+		}
 	}
 }
 
