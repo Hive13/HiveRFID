@@ -7,15 +7,76 @@ package wiegand
 
 import (
 	"time"
+
+	"github.com/warthog618/gpiod"
 )
 
 const data_len = 100
+const max_wiegand_bits = 32
+const reader_timeout = 3000000
+
+var _isr_data [max_wiegand_bits]bool
+var _isr_bit_count uint64
+var _isr_bit_time time.Time
 
 type BadgeRead struct {
 	RawBits []byte
 	Value uint64
 	LengthOK bool
 	ParityOK bool
+}
+
+func d0_fall_isr(evt gpiod.LineEvent) {
+	if evt.Type == gpiod.LineEventFallingEdge {
+		if _isr_bit_count < max_wiegand_bits {
+			_isr_bit_count += 1
+		}
+		_isr_bit_time = time.Now()
+	}
+}
+
+func d1_fall_isr(evt gpiod.LineEvent) {
+	if evt.Type == gpiod.LineEventFallingEdge {
+		if _isr_bit_count < max_wiegand_bits {
+			_isr_data[_isr_bit_count] = true
+			_isr_bit_count += 1
+		}
+		_isr_bit_time = time.Now()
+	}
+}
+
+func reset() {
+	for i,_ := range _isr_data {
+		_isr_data[i] = false
+	}
+	_isr_bit_count = 0
+}
+
+func pending_bit_count() uint64 {
+	delta := time.Now().Sub(_isr_bit_time)
+	if delta.Nanoseconds() > reader_timeout {
+		return _isr_bit_count
+	}
+	return 0
+}
+
+func badgeCheckRaw(data *[data_len]byte) (uint64, bool) {
+	if pending_bit_count() == 0 {
+		return 0, false
+	}
+
+	count := _isr_bit_count
+	if count > data_len {
+		count = data_len
+	}
+	for i := uint64(0); i < count; i += 1 {
+		if _isr_data[i] {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+	}
+	return count, true
 }
 
 // ListenBadges returns a channel that will send every badge scanned.
@@ -28,9 +89,23 @@ type BadgeRead struct {
 // As this relies on an initial C call, it may simply exit the program
 // if it fails to initialize - see wiegand_c.go and its initWiegand()
 // call.
-func ListenBadges(d0_pin int, d1_pin int) (<-chan BadgeRead, error) {
+func ListenBadges(chip *gpiod.Chip, d0_pin int, d1_pin int) (<-chan BadgeRead, error) {
 
-	initWiegand(d0_pin, d1_pin)
+	d0, err := chip.RequestLine(d0_pin,
+		gpiod.WithFallingEdge,
+		gpiod.WithEventHandler(d0_fall_isr))
+	if err != nil {
+		return nil, err
+	}
+	_ = d0
+
+	d1, err := chip.RequestLine(d1_pin,
+		gpiod.WithFallingEdge,
+		gpiod.WithEventHandler(d1_fall_isr))
+	if err != nil {
+		return nil, err
+	}
+	_ = d1
 	
 	ch := make(chan BadgeRead)
 	go func(chan<- BadgeRead) {

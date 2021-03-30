@@ -156,14 +156,22 @@ func Run(cfg *Config) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer beep_pin.SetValue(1) // it's active-low
+	defer beep_pin.Close()
+	
 	led_pin, err := chip.RequestLine(cfg.PinLED, gpiod.AsOutput(1))
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer led_pin.SetValue(1) // it's active-low
+	defer led_pin.Close()
+	
 	lock_pin, err := chip.RequestLine(cfg.PinLock, gpiod.AsOutput(0))
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer lock_pin.SetValue(0) // make sure lock isn't open when we quit
+	defer lock_pin.Close()
 	var sensor_pin *gpiod.Line = nil
 	if cfg.PinSensor >= 0 {
 		p, err := chip.RequestLine(cfg.PinSensor, gpiod.AsInput)
@@ -184,14 +192,8 @@ func Run(cfg *Config) {
 	beep_pin.SetValue(1)
 	led_pin.SetValue(1)
 
-	// Make sure that both are off (they're active-low) when we exit:
-	defer beep_pin.SetValue(1)
-	defer led_pin.SetValue(1)
-	// And likewise for lock, which is active-high:
-	defer lock_pin.SetValue(0)
-	
 	log.Printf("Listening for badges...")
-	badges, err := wiegand.ListenBadges(cfg.PinD0, cfg.PinD1)
+	badges, err := wiegand.ListenBadges(chip, cfg.PinD0, cfg.PinD1)
 	if err != nil {
 		log.Fatal(err)
 	}
