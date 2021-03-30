@@ -6,23 +6,25 @@ import (
 
 	"hive13/rfid/sensor"
 	
-	"github.com/stianeikeland/go-rpio/v4"
+	"github.com/warthog618/gpiod"
 )
-
 
 func main() {
 	pin_num := 6
 
-	pin := rpio.Pin(pin_num)
-	if err := rpio.Open(); err != nil {
-		log.Fatal(err)
+	c, err := gpiod.NewChip("gpiochip0")
+	if err != nil {
+		panic(err)
 	}
-	defer rpio.Close()
-	pin.Input()
-	pin.PullUp()
+	defer c.Close()
 
 	settle := 300 * time.Millisecond
-	for s := range sensor.ListenSensor(pin, settle) {
+	sensor, err := sensor.ListenSensor(c, pin_num, settle)
+	if err != nil {
+		panic(err)
+	}
+	
+	for s := range sensor {
 		log.Printf("%t", s)
 	}
 }
