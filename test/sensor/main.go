@@ -12,19 +12,24 @@ import (
 func main() {
 	pin_num := 6
 
-	c, err := gpiod.NewChip("gpiochip0")
+	chip, err := gpiod.NewChip("gpiochip0")
 	if err != nil {
 		panic(err)
 	}
-	defer c.Close()
+	defer chip.Close()
 
-	settle := 300 * time.Millisecond
-	sensor, err := sensor.ListenSensor(c, pin_num, settle)
+	l, err := chip.RequestLine(pin_num, gpiod.AsInput)
 	if err != nil {
 		panic(err)
 	}
 	
-	for s := range sensor {
+	settle := 300 * time.Millisecond
+	sensor_chan, err := sensor.ListenSensor(l, settle)
+	if err != nil {
+		panic(err)
+	}
+	
+	for s := range sensor_chan {
 		log.Printf("%t", s)
 	}
 }

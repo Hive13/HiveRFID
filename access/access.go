@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/stianeikeland/go-rpio/v4"
+	"github.com/warthog618/gpiod"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	
 	"hive13/rfid/intweb"
@@ -83,14 +83,14 @@ type ServerCtx struct {
 	MqttClient MQTT.Client
 	
 	// Initialized pin to control door latch:
-	Lock rpio.Pin
+	Lock *gpiod.Line
 	
 	// Initialized pin to control beeper (active-low):
-	Beep rpio.Pin
+	Beep *gpiod.Line
 
 	// If non-nil, initialized pin for door sensor (see
 	// SensorPolarity):
-	Sensor *rpio.Pin
+	Sensor *gpiod.Line
 	
 	// Timer which, upon expiration, will trigger the door latch being
 	// locked again.  Upon every lock, this should have .Stop() and
@@ -145,38 +145,50 @@ func (a AccessDeniedError) Error() string {
 }
 
 func Run(cfg *Config) {
-	beep_pin := rpio.Pin(cfg.PinBeeper)
-	led_pin := rpio.Pin(cfg.PinLED)
-	lock_pin := rpio.Pin(cfg.PinLock)
-	var sensor_pin *rpio.Pin = nil
-	if cfg.PinSensor >= 0 {
-		p := rpio.Pin(cfg.PinSensor)
-		sensor_pin = &p
-	}
-	if err := rpio.Open(); err != nil {
+
+	chip, err := gpiod.NewChip("gpiochip0")
+	if err != nil {
 		log.Fatal(err)
 	}
-	defer rpio.Close()
-	beep_pin.Output()
-	led_pin.Output()
-	lock_pin.Output()
-	if sensor_pin != nil {
-		sensor_pin.Input()
-		sensor_pin.PullUp()
+	defer chip.Close()
+	
+	beep_pin, err := chip.RequestLine(cfg.PinBeeper, gpiod.AsOutput(1))
+	if err != nil {
+		log.Fatal(err)
 	}
+	led_pin, err := chip.RequestLine(cfg.PinLED, gpiod.AsOutput(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	lock_pin, err := chip.RequestLine(cfg.PinLock, gpiod.AsOutput(0))
+	if err != nil {
+		log.Fatal(err)
+	}
+	var sensor_pin *gpiod.Line = nil
+	if cfg.PinSensor >= 0 {
+		p, err := chip.RequestLine(cfg.PinSensor, gpiod.AsInput)
+		if err != nil {
+			log.Fatal(err)
+		}
+		sensor_pin = p
+	}
+	// TODO: Check this
+	// sensor_pin.PullUp()
+
+	// Initial beep/blink (useful for a quick startup signal):
 	for x := 0; x < 5; x++ {
-		beep_pin.Toggle()
-		led_pin.Toggle()
+		beep_pin.SetValue(x % 2)
+		led_pin.SetValue(x % 2)
 		time.Sleep(time.Millisecond * 20)
 	}
-	beep_pin.High()
-	led_pin.High()
+	beep_pin.SetValue(1)
+	led_pin.SetValue(1)
 
 	// Make sure that both are off (they're active-low) when we exit:
-	defer beep_pin.High()
-	defer led_pin.High()
+	defer beep_pin.SetValue(1)
+	defer led_pin.SetValue(1)
 	// And likewise for lock, which is active-high:
-	defer lock_pin.Low()
+	defer lock_pin.SetValue(0)
 	
 	log.Printf("Listening for badges...")
 	badges, err := wiegand.ListenBadges(cfg.PinD0, cfg.PinD1)
@@ -204,7 +216,7 @@ func Run(cfg *Config) {
 		if cfg.Verbose {
 			log.Printf("Closing lock.")
 		}
-		lock_pin.Low()
+		lock_pin.SetValue(0)
 	})
 	// We don't want it to trigger yet:
 	relock.Stop()
@@ -226,7 +238,10 @@ func Run(cfg *Config) {
 	// If there is a door sensor, then start a goroutine to monitor it
 	// in the background:
 	if ctx.Sensor != nil {
-		go ctx.monitor_door()
+		err := ctx.monitor_door()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	// If an MQTT broker address was given, try to connect. (This is
@@ -311,9 +326,9 @@ func Run(cfg *Config) {
 		case <-time.After(1000 * time.Millisecond):
 			ctx.scrub_cache()
 			go func() {
-				led_pin.Low()
+				led_pin.SetValue(0)
 				<-time.After(50 * time.Millisecond)
-				led_pin.High()
+				led_pin.SetValue(1)
 			}()
 			
 		// Expire cache entries from background requests as-needed:
@@ -326,24 +341,33 @@ func Run(cfg *Config) {
 
 // Monitor the door sensor for activity.  (Mostly a placeholder
 // function so far.)
-func (ctx *ServerCtx) monitor_door() {
+func (ctx *ServerCtx) monitor_door() error {
 	log.Printf("Started monitor_door() goroutine for pin %+v",
 		*ctx.Sensor)
 	settle := 300 * time.Millisecond
-	for s := range sensor.ListenSensor(*ctx.Sensor, settle) {
-		status := ""
-		if ctx.SensorPolarity == s {
-			status = "open"
-		} else {
-			status = "closed"
-		}
-		log.Printf("monitor_door(): %s", status)
-		
-		// Publish new door state to MQTT if we can:
-		if ctx.MqttClient != nil {
-			ctx.MqttClient.Publish(ctx.Mqtt.TopicSensor, 0, false, status)
-		}
+	sensor_chan, err := sensor.ListenSensor(ctx.Sensor, settle)
+	if err != nil {
+		return err
 	}
+
+	go func (sensor_chan <-chan bool) {
+		for s := range sensor_chan {
+			status := ""
+			if ctx.SensorPolarity == s {
+				status = "open"
+			} else {
+				status = "closed"
+			}
+			log.Printf("monitor_door(): %s", status)
+			
+			// Publish new door state to MQTT if we can:
+			if ctx.MqttClient != nil {
+				ctx.MqttClient.Publish(ctx.Mqtt.TopicSensor, 0, false, status)
+			}
+		}
+	}(sensor_chan)
+
+	return nil
 }
 
 // Handle door-open request (whether from badge reader or from HTTP).
@@ -408,9 +432,9 @@ func (ctx *ServerCtx) handle_badge(s *intweb.Session, badge uint64,
 			// checking access:
 			go func() {
 				for i := 0; i < 3; i += 1 {
-					ctx.Beep.Low()
+					ctx.Beep.SetValue(0)
 					<-time.After(500 * time.Millisecond)
-					ctx.Beep.High()
+					ctx.Beep.SetValue(1)
 					<-time.After(500 * time.Millisecond)
 				}
 			}()
@@ -560,13 +584,13 @@ func (ctx *ServerCtx) handle_access(access bool, badge uint64,
 
 		// Beep once for access allowed:
 		go func() {
-			ctx.Beep.Low()
+			ctx.Beep.SetValue(0)
 			<-time.After(500 * time.Millisecond)
-			ctx.Beep.High()
+			ctx.Beep.SetValue(1)
 			<-time.After(500 * time.Millisecond)
 		}()
 			
-		ctx.Lock.High()
+		ctx.Lock.SetValue(1)
 		
 		ctx.ReLockTimer.Stop()
 		ctx.ReLockTimer.Reset(ctx.LockHoldTime)
@@ -576,9 +600,9 @@ func (ctx *ServerCtx) handle_access(access bool, badge uint64,
 		// Beep twice for access denied:
 		go func() {
 			for i := 0; i < 2; i += 1 {
-				ctx.Beep.Low()
+				ctx.Beep.SetValue(0)
 				<-time.After(500 * time.Millisecond)
-				ctx.Beep.High()
+				ctx.Beep.SetValue(1)
 				<-time.After(500 * time.Millisecond)
 			}
 		}()
