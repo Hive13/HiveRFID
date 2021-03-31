@@ -17,13 +17,14 @@ This contains code for Hive13's RFID & door access server, which:
 For the older Arduino-based version of this that I did not write, see
 [https://github.com/Hive13/hive-rfid-door-controller](https://github.com/Hive13/hive-rfid-door-controller).
 
-This is written as a [Go](https://golang.org/) module. Currently it
-requires a Raspberry Pi to run because it relies on
-[WiringPi](http://wiringpi.com/).  As it is Go, it requires
-compilation.
+This is written as a [Go](https://golang.org/) module.  As it is Go,
+it requires compilation. In theory, it should run anywhere that Go can
+target, and that has a working Linux GPIO driver (which
+[gpiod](https://github.com/warthog618/gpiod) uses).
 
-So far it has only been tested and run on Alpine Linux, but it should
-build and run the same on any Raspberry Pi distribution.
+So far it has only been tested and run on Alpine Linux on a Raspberry
+Pi, but it should build and run the same on any Raspberry Pi
+distribution.
 
 For more information, see
 [https://wiki.hive13.org/view/RFID_Access#2701_Front_Door](https://wiki.hive13.org/view/RFID_Access#2701_Front_Door).
@@ -47,8 +48,7 @@ Running
 -------
 
 See the below section for building the binary.  Once the binary is
-built, you should require only the `wiringpi` packages, and a diskless
-Alpine install should suffice.
+built, a diskless Alpine install should suffice.
 
 Run `./access.bin` to see its commandline options.  Many things can be
 specified, some mandatory:
@@ -75,11 +75,10 @@ Development
 -----------
 
 This requires that Go be installed, at least v1.13. Older versions may
-work with some effort, but I haven't tried them. It also requires the
-development libraries for WiringPi.
+work with some effort, but I haven't tried them.
 
-On Alpine Linux I am using the following packages: `go gcc libc-dev
-wiringpi wiringpi-dev`. You may need to set up a [persistent
+On Alpine Linux I am using the following packages: `go gcc libc-dev`.
+You may need to set up a [persistent
 installation](https://wiki.alpinelinux.org/wiki/Classic_install_or_sys_mode_on_Raspberry_Pi)
 rather than a diskless one in order to handle the extra space
 required.
@@ -107,10 +106,6 @@ Code Overview
 - [wiegand/wiegand.go](./wiegand/wiegand.go) is a wrapper which turns
   badge access to a Go channel that reports all 26-bit Wiegand codes
   scanned.
-- [wiegand/wiegand_c.go](./wiegand/wiegand_c.go) is the low-level code
-  for accessing a Wiegand-compatible badge reader.  It relies on
-  [cgo](https://golang.org/cmd/cgo/) and
-  [WiringPi](http://wiringpi.com/).
 
 Deployment
 ----------
