@@ -18,16 +18,15 @@ For the older Arduino-based version of this that I did not write, see
 [https://github.com/Hive13/hive-rfid-door-controller](https://github.com/Hive13/hive-rfid-door-controller).
 
 This is written as a [Go](https://golang.org/) module.  As it is Go,
-it requires compilation. In theory, it should run anywhere that Go can
-target, and that has a working Linux GPIO driver (which
-[gpiod](https://github.com/warthog618/gpiod) uses).
+it requires compilation.
 
 So far it has only been tested and run on Alpine Linux on a Raspberry
-Pi, but it should build and run the same on any Raspberry Pi
-distribution.
+Pi.  In theory, it should run anywhere that Go can target, and that
+has a working Linux GPIO driver (which
+[gpiod](https://github.com/warthog618/gpiod) uses).
 
 For more information, see
-[https://wiki.hive13.org/view/RFID_Access#2701_Front_Door](https://wiki.hive13.org/view/RFID_Access#2701_Front_Door).
+[https://wiki.hive13.org/view/RFID_Access#2701_Front_Door](https://wiki.hive13.org/view/RFID_Access).
 Most information that is specific to Hive13's installations is kept
 here.
 
@@ -43,6 +42,10 @@ itself, which has an LED and a beeper:
   - Sound three long beeps on any error that prevented it
     from even being able to query access with intweb (typically
     network problems or misconfiguration)
+
+TODO:
+
+- Document MQTT stuff.
 
 Running
 -------
@@ -77,19 +80,31 @@ Development
 This requires that Go be installed, at least v1.13. Older versions may
 work with some effort, but I haven't tried them.
 
-On Alpine Linux I am using the following packages: `go gcc libc-dev`.
-You may need to set up a [persistent
-installation](https://wiki.alpinelinux.org/wiki/Classic_install_or_sys_mode_on_Raspberry_Pi)
-rather than a diskless one in order to handle the extra space
-required.
+Right now, this uses only pure Go dependencies, which brings a few
+benefits:
 
-Run the following:
+- In order to build it, only Go needs to be installed - no other
+  packages or libraries are required.
+- In order to *run* it, no other dependencies are needed.
+- Cross-compilation is very simple.
+
+The following will cross-compile a static binary suitable to run on
+Linux on the Raspbery Pi with no other requirements:
 
 ```bash
-go build -o access.bin access/main/main.go
+CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -o access.bin access/main/main.go
 ```
 
-This should fetch all dependencies and produce a binary, `access.bin`.
+(`GOARCH=arm64` is also fine for all but the oldest Pis, I think.)
+
+This should fetch all dependencies and produce a standalone binary,
+`access.bin`.
+
+This build has been tested on Linux (x86_64 and ARM) and on OS X.
+
+In theory, the above should work on any architecture that runs Linux,
+that Go can target (`GOARCH` may need changed), and that has GPIO
+supported by the Linux GPIO character device.
 
 Code Overview
 -------------
@@ -103,9 +118,25 @@ Code Overview
 - [intweb/intweb.go](./intweb/intweb.go) interfaces with intweb (which
   runs https://github.com/Hive13/HiveWeb) for access-specific
   functionality.
+- [mqtt/mqtt.go](./mqtt/mqtt.go) provides a small struct to bundle
+  together some MQTT parameters together. It works with the
+  [paho.mqtt.golang](https://github.com/eclipse/paho.mqtt.golang)
+  library.
+- [sensor/sensor.go](./sensor/sensor.go) provides a basic debouncing
+  and monitoring function that is used for monitoring a door sensor
+  that is potentially noisy.
 - [wiegand/wiegand.go](./wiegand/wiegand.go) is a wrapper which turns
   badge access to a Go channel that reports all 26-bit Wiegand codes
   scanned.
+
+Some test utilities are provided too:
+
+- [test/wiegand/main.go](./test/wiegand/main.go) is a utility
+  which tries to read Wiegand codes, and outputs them as it receives
+  them. Note that pin numbers are hard-coded, and so they may require
+  modification.
+- [test/sensor/main.go](./test/sensor/main.go) is a utility which runs
+  the internal debouncing/state-change routine on a given pin.
 
 Deployment
 ----------
@@ -145,3 +176,6 @@ For this, see the `old` directory.
 The C code may be useful for standalone testing, as it runs as a
 commandline application which prints scanned badges to stdout as
 comma-separated data.
+
+Prior Go versions relied on go-rpio and on WiringPi. These
+dependencies were removed in favor of gpiod.
