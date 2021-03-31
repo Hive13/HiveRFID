@@ -76,6 +76,7 @@ func badgeCheckRaw(data *[data_len]byte) (uint64, bool) {
 			data[i] = 0
 		}
 	}
+	reset()
 	return count, true
 }
 
@@ -97,18 +98,19 @@ func ListenBadges(chip *gpiod.Chip, d0_pin int, d1_pin int) (<-chan BadgeRead, e
 	if err != nil {
 		return nil, err
 	}
-	_ = d0
 
 	d1, err := chip.RequestLine(d1_pin,
 		gpiod.WithFallingEdge,
 		gpiod.WithEventHandler(d1_fall_isr))
 	if err != nil {
+		d0.Close()
 		return nil, err
 	}
-	_ = d1
 	
 	ch := make(chan BadgeRead)
 	go func(chan<- BadgeRead) {
+		defer d0.Close()
+		defer d1.Close()
 		var data [data_len]byte
 		var even_check byte = 0
 		var odd_check byte = 0
