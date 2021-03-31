@@ -1,9 +1,11 @@
 package wiegand
 
 // The wiegand package provides a rudimentary driver to read from
-// badge readers using the Wiegand protocol.  It requires a Raspberry
-// Pi, the WiringPi library, and cgo, as it relies on the C code in
-// wiegand_c.go.
+// badge readers using the Wiegand protocol.
+//
+// It is based on a hasty conversion of
+// https://github.com/alperenguman/rpi-wiegand-reader.git
+// to use gpiod.
 
 import (
 	"time"
