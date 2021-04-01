@@ -45,7 +45,6 @@ itself, which has an LED and a beeper:
 
 TODO:
 
-- Document MQTT stuff.
 - Make GPIO device configurable.  Right now it is hardcoded to
   "gpiochip0" and I didn't realize this meant `/dev/gpiochip0`.
 
@@ -58,11 +57,12 @@ built, a diskless Alpine install should suffice.
 Run `./access.bin` to see its commandline options.  Many things can be
 specified, some mandatory:
 
-- Pin numbers for the badge reader
-- Pin number to trigger the electronic strike
+- Pin numbers for the badge reader, the electronic strike, and the
+  door sensor (optionally, which GPIO chip)
 - URL for intweb
 - Device, device key, and item being accessed on intweb
 - Address for the HTTP server
+- MQTT broker address, credentials, and topic names.
 
 HTTP API
 --------
@@ -75,6 +75,21 @@ This runs an HTTP server which supports the below requests:
   database.
 - GET to `/ping`: Return a 200 OK if the server's main loop is
   responding. Return an error in any other case.
+
+MQTT
+----
+
+This optionally connects to an MQTT broker to publish two kinds of
+events:
+
+- Badge scans: message is a string containing the RFID badge number,
+  regardess of whether the badge is accepted or not, in the same form
+  as sent to intweb
+- Door opening or closing: message is simply "open" or "closed", sent
+  only on a *change* in the sensor's value, or at startup
+
+The topic for each event is configurable. These topics, as well as the
+MQTT credentials, may be set via the commandline options.
 
 Development
 -----------
