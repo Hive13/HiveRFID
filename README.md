@@ -46,6 +46,8 @@ itself, which has an LED and a beeper:
 TODO:
 
 - Document MQTT stuff.
+- Make GPIO device configurable.  Right now it is hardcoded to
+  "gpiochip0" and I didn't realize this meant `/dev/gpiochip0`.
 
 Running
 -------
