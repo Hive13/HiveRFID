@@ -51,6 +51,8 @@ func init() {
 	cfg = &access.Config{
 	}
 
+	rootCmd.PersistentFlags().StringVar(&cfg.GpioDev, "gpio", "gpiochip0",
+		"GPIO character device, e.g. gpiochip0 for /dev/gpiochip0")
 	rootCmd.PersistentFlags().IntVar(&cfg.PinD0, "d0", 17,
 		"BCM/GPIO input pin number for badge reader's Wiegand D0 pin")
 	rootCmd.PersistentFlags().IntVar(&cfg.PinD1, "d1", 18,

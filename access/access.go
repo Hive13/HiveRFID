@@ -29,6 +29,9 @@ const (
 )
 
 type Config struct {
+	// Linux GPIO character device name, without /dev -
+	// e.g. "gpiochip0" for /dev/gpiochip0
+	GpioDev string
 	// Pin number (input) for Wiegand D0 of the badge reader (as
 	// GPIO/BCM pin):
 	PinD0 int
@@ -146,7 +149,7 @@ func (a AccessDeniedError) Error() string {
 
 func Run(cfg *Config) {
 
-	chip, err := gpiod.NewChip("gpiochip0")
+	chip, err := gpiod.NewChip(cfg.GpioDev)
 	if err != nil {
 		log.Fatal(err)
 	}
