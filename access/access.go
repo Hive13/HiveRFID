@@ -349,8 +349,7 @@ func Run(cfg *Config) {
 // Monitor the door sensor for activity.  (Mostly a placeholder
 // function so far.)
 func (ctx *ServerCtx) monitor_door() error {
-	log.Printf("Started monitor_door() goroutine for pin %+v",
-		*ctx.Sensor)
+	log.Printf("Started monitor_door() goroutine")
 	settle := 300 * time.Millisecond
 	sensor_chan, err := sensor.ListenSensor(ctx.Sensor, settle)
 	if err != nil {
