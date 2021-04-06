@@ -187,13 +187,15 @@ func Run(cfg *Config) {
 	// sensor_pin.PullUp()
 
 	// Initial beep/blink (useful for a quick startup signal):
-	for x := 0; x < 5; x++ {
-		beep_pin.SetValue(x % 2)
-		led_pin.SetValue(x % 2)
-		time.Sleep(time.Millisecond * 20)
-	}
-	beep_pin.SetValue(1)
-	led_pin.SetValue(1)
+	go func(beep_pin *gpiod.Line, led_pin *gpiod.Line) {
+		for x := 0; x < 5; x++ {
+			beep_pin.SetValue(x % 2)
+			led_pin.SetValue(x % 2)
+			time.Sleep(time.Millisecond * 50)
+		}
+		beep_pin.SetValue(1)
+		led_pin.SetValue(1)
+	}(beep_pin, led_pin)
 
 	log.Printf("Listening for badges...")
 	badges, err := wiegand.ListenBadges(chip, cfg.PinD0, cfg.PinD1)
