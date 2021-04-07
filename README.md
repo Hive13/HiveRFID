@@ -43,11 +43,6 @@ itself, which has an LED and a beeper:
     from even being able to query access with intweb (typically
     network problems or misconfiguration)
 
-TODO:
-
-- Make GPIO device configurable.  Right now it is hardcoded to
-  "gpiochip0" and I didn't realize this meant `/dev/gpiochip0`.
-
 Running
 -------
 
