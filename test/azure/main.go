@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"encoding/json"
 
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -16,8 +18,9 @@ func main() {
 		"https://login.microsoftonline.com/%s/oauth2/v2.0/token",
 		tenant)
 
-	user_id := "12345"
+	user_id := "178563"
 	rq_url := "https://graph.microsoft.com/v1.0/users?$filter=extension_243b36ba13e74e8e86cdbb23779f1e1a_hiveBadgeId%20eq%20" + user_id
+	//rq_url := "https://graph.microsoft.com/v1.0/users"
 
 	ctx := context.Background()
 	conf := clientcredentials.Config{
@@ -36,7 +39,7 @@ func main() {
 
 	client := conf.Client(ctx)
 
-	log.Printf("Using user ID: %s", user_id)
+	//log.Printf("Using user ID: %s", user_id)
 	log.Printf("Using request URL: %s", rq_url)
 	
 	resp, err := client.Get(rq_url)
@@ -47,5 +50,10 @@ func main() {
 		log.Printf("Response: %s", resp.Status)
 	} else {
 		log.Printf("resp=%+v", resp)
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Body: %s", b)
 	}
 }
