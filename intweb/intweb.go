@@ -201,7 +201,8 @@ type RespData struct {
 	Random         []int  `json:"random"`
 	RandomResponse []int  `json:"random_response"`
 	Response       bool   `json:"response"`
-	Version        string `json:"version"`
+	// Disabled to work around a server work-around:
+	//Version        string `json:"version"`
 	Data           string `json:"data"`
 	Access         bool   `json:"access"`
 	Error          string `json:"error"`
