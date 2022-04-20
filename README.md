@@ -177,6 +177,17 @@ Logs will be written to `/var/log/door_access.log`.  You may wish to
 set up `logrotate` in order to prevent the logs from growing too
 large.
 
+To Do
+-----
+
+- Get a few things into the compiled binary (maybe like
+  [this](https://gist.github.com/awalterschulze/d0f217db28e17b2ee56e8e8a4e68c28e) -
+  see https://pkg.go.dev/cmd/link and `-X` option):
+  - Build timestamp
+  - git revision
+- Make a 'dry run' mode which doesn't actually trigger the door, just
+  says that it would.
+
 Older Code
 ----------
 
