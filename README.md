@@ -195,6 +195,8 @@ To Do
   - git revision
 - Make a 'dry run' mode which doesn't actually trigger the door, just
   says that it would.
+- Get Travis CI integration and have the static build as a GitHub asset
+- Maybe: Have a Dockerfile for the build?
 
 Older Code
 ----------
