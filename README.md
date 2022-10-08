@@ -100,8 +100,9 @@ benefits:
 - In order to *run* it, no other dependencies are needed.
 - Cross-compilation is very simple.
 
-The following will cross-compile a static binary suitable to run on
-Linux on the Raspbery Pi with no other requirements:
+From any platform Go runs on, the below should cross-compile a static
+binary suitable to run on Linux on the Raspbery Pi with no other
+requirements:
 
 ```bash
 CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -o access.bin access/main/main.go
@@ -112,11 +113,18 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -o access.bin access/main/main.go
 This should fetch all dependencies and produce a standalone binary,
 `access.bin`.
 
-This build has been tested on Linux (x86_64 and ARM) and on OS X.
+This build has been tested on Linux (x86_64 and ARM), on OS X, and
+somewhat on Windows.  The following was reported to work on Powershell
+(with `FOO` replaced by some other user):
 
-In theory, the above should work on any architecture that runs Linux,
-that Go can target (`GOARCH` may need changed), and that has GPIO
-supported by the Linux GPIO character device.
+```
+$Env:CGO_ENABLED=0; $Env:GOOS="linux"; $Env:GOARCH="arm"; go build -o C:\Users\FOO\Desktop\access.bin access\main\main.go
+```
+
+In theory, this should build a working binary for any architecture
+that runs Linux, that Go can target (`GOARCH` may need changed), and
+that has GPIO supported by the [Linux GPIO character
+device](https://docs.kernel.org/next/driver-api/gpio/using-gpio.html).
 
 Code Overview
 -------------
@@ -201,4 +209,4 @@ commandline application which prints scanned badges to stdout as
 comma-separated data.
 
 Prior Go versions relied on go-rpio and on WiringPi. These
-dependencies were removed in favor of gpiod.
+dependencies were removed in favor of [gpiod](https://github.com/warthog618/gpiod).
