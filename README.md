@@ -126,6 +126,12 @@ that runs Linux, that Go can target (`GOARCH` may need changed), and
 that has GPIO supported by the [Linux GPIO character
 device](https://docs.kernel.org/next/driver-api/gpio/using-gpio.html).
 
+To add the git revision and build time to the binary, use:
+
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -o access.bin -ldflags "-X main.Version=$(git rev-parse --short HEAD) -X \"main.Buildtime=$(date)\"" access/main/main.go
+```
+
 Code Overview
 -------------
 
@@ -188,11 +194,6 @@ large.
 To Do
 -----
 
-- Get a few things into the compiled binary (maybe like
-  [this](https://gist.github.com/awalterschulze/d0f217db28e17b2ee56e8e8a4e68c28e) -
-  see https://pkg.go.dev/cmd/link and `-X` option):
-  - Build timestamp
-  - git revision
 - Make a 'dry run' mode which doesn't actually trigger the door, just
   says that it would.
 - Get Travis CI integration and have the static build as a GitHub asset

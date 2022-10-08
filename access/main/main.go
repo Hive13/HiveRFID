@@ -17,7 +17,13 @@ var device_key string
 var hold_msec int
 var cache_hours int
 
+// Supplied via -ldflags "-X main.Version=..." or similar:
+var Version string
+var Buildtime string
+
 func main() {
+	log.Printf("build version: %s, time: %s", Version, Buildtime)
+	
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
